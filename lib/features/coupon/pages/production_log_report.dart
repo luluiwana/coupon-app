@@ -76,7 +76,7 @@ Widget _buildBatchSection() {
   );
 }
 
-class BatchSection extends StatelessWidget {
+class BatchSection extends StatefulWidget {
   final int batchNumber;
   final String operatorName;
   final String location;
@@ -91,6 +91,22 @@ class BatchSection extends StatelessWidget {
     required this.date,
     required this.time,
   });
+
+  @override
+  State<BatchSection> createState() => _BatchSectionState();
+}
+
+class _BatchSectionState extends State<BatchSection> {
+  late Future<List<Map<String, dynamic>>> _couponsFuture;
+  int? _selectedNominal;
+
+  @override
+  void initState() {
+    super.initState();
+    _couponsFuture = DatabaseHelper.instance.getProductionReport(
+      widget.batchNumber,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -117,10 +133,10 @@ class BatchSection extends StatelessWidget {
 
   Widget _buildInfoTable() {
     final infoData = {
-      'No Batch:': batchNumber.toString(),
-      'Nama Operator:': operatorName,
-      'Lokasi:': location,
-      'Tanggal / Jam:': '$date / $time',
+      'No Batch:': widget.batchNumber.toString(),
+      'Nama Operator:': widget.operatorName,
+      'Lokasi:': widget.location,
+      'Tanggal / Jam:': '${widget.date} / ${widget.time}',
     };
 
     return Padding(
@@ -149,9 +165,8 @@ class BatchSection extends StatelessWidget {
   }
 
   Widget _buildCouponDataTable() {
-    final db = DatabaseHelper.instance;
     return FutureBuilder<List<Map<String, dynamic>>>(
-      future: db.getProductionReport(batchNumber),
+      future: _couponsFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const SizedBox(
@@ -159,67 +174,104 @@ class BatchSection extends StatelessWidget {
             child: Center(child: CircularProgressIndicator()),
           );
         }
-        final coupons = snapshot.data ?? <Map<String, dynamic>>[];
-        if (coupons.isEmpty) {
+        final allCoupons = snapshot.data ?? <Map<String, dynamic>>[];
+        if (allCoupons.isEmpty) {
           return const Padding(
             padding: EdgeInsets.all(8.0),
             child: Text('No coupons for this batch'),
           );
         }
-        final source = CouponDataSource(coupons);
-        final int perPage = 10;
-        final int effectiveRowsPerPage = coupons.length < perPage
-            ? coupons.length
-            : perPage;
 
-        return PaginatedDataTable(
-          columns: const [
-            DataColumn(label: Text('No Box')),
-            DataColumn(label: Text('No Kupon')),
-            DataColumn(
-              label: Text(
-                'Nominal',
-                style: TextStyle(fontWeight: FontWeight.bold),
+        final nominals = allCoupons
+            .map((c) => c['amount'] is int ? c['amount'] as int : 0)
+            .toSet()
+            .toList()
+          ..sort();
+
+        final coupons = _selectedNominal == null
+            ? allCoupons
+            : allCoupons
+                .where(
+                  (c) =>
+                      (c['amount'] is int ? c['amount'] as int : 0) ==
+                      _selectedNominal,
+                )
+                .toList();
+
+        final _nomFmt = NumberFormat.currency(
+          locale: 'id_ID',
+          symbol: 'Rp ',
+          decimalDigits: 0,
+        );
+
+        final int perPage = 10;
+        final int effectiveRowsPerPage =
+            coupons.isEmpty ? 1 : (coupons.length < perPage ? coupons.length : perPage);
+
+        final source = CouponDataSource(coupons);
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: Row(
+                children: [
+                  const Text(
+                    'Filter Nominal:',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(width: 8),
+                  DropdownButton<int?>(
+                    value: _selectedNominal,
+                    hint: const Text('Semua'),
+                    items: [
+                      const DropdownMenuItem<int?>(
+                        value: null,
+                        child: Text('Semua'),
+                      ),
+                      ...nominals.map(
+                        (n) => DropdownMenuItem<int?>(
+                          value: n,
+                          child: Text(_nomFmt.format(n)),
+                        ),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedNominal = value;
+                      });
+                    },
+                  ),
+                ],
               ),
             ),
-            DataColumn(label: Text('Keterangan')),
+            if (coupons.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(8.0),
+                child: Text('Tidak ada data untuk nominal ini'),
+              )
+            else
+              PaginatedDataTable(
+                columns: const [
+                  DataColumn(label: Text('No Box')),
+                  DataColumn(label: Text('No Kupon')),
+                  DataColumn(
+                    label: Text(
+                      'Nominal',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  DataColumn(label: Text('Keterangan')),
+                ],
+                source: source,
+                rowsPerPage: effectiveRowsPerPage,
+                availableRowsPerPage: const [10],
+                showCheckboxColumn: false,
+                columnSpacing: 12,
+              ),
           ],
-          source: source,
-          rowsPerPage: effectiveRowsPerPage,
-          availableRowsPerPage: const [10,],
-          showCheckboxColumn: false,
-          columnSpacing: 12,
         );
-        // return DataTable(
-        //   border: TableBorder.all(color: Colors.grey.shade300),
-        //   columnSpacing: 12,
-        //   headingRowColor: MaterialStatePropertyAll(
-        //     const Color.fromRGBO(227, 242, 253, 1),
-        //   ),
-        //   columns: const [
-        //     DataColumn(label: Text('No Box')),
-        //     DataColumn(label: Text('No Kupon')),
-        //     DataColumn(
-        //       label: Text('Nominal', style: TextStyle(fontWeight: FontWeight.bold)),
-        //     ),
-        //     DataColumn(label: Text('Keterangan')),
-        //   ],
-        //   rows: coupons.map((coupon) {
-        //     final nominal = coupon['amount'] is int ? coupon['amount'] as int : 0; // Pastikan nominal adalah int, jika tidak, set ke 0
-        //     final keterangan = coupon['keterangan'] ?? '';
-        //     return DataRow(
-        //       cells: [
-        //         DataCell(Text('${coupon['box_id'] ?? ''}')),
-        //         DataCell(Text('${coupon['serialnumber'] ?? ''}')),
-        //         DataCell(Text(
-        //           NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0)
-        //               .format(nominal),
-        //         )),
-        //         DataCell(Text(keterangan)),
-        //       ],
-        //     );
-        //   }).toList(),
-        // );
       },
     );
   }

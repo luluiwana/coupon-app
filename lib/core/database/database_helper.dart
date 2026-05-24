@@ -108,7 +108,7 @@ class DatabaseHelper {
       'id': batchData['id'],
       'operator_name': batchData['operator_name'],
       'location': batchData['location'],
-      'total_coupons': 0,
+      'total_coupons': 5000,
       'created_at': DateTime.now().toIso8601String(),
     });
   }

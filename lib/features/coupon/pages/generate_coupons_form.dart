@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:sqflite/sqflite.dart' as sql;
-import 'package:path/path.dart' as path;
 import 'dart:math';
 import 'package:coupons/core/database/database_helper.dart';
 //widgets
